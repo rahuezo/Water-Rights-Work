@@ -88,7 +88,7 @@ def get_rows(spacket):
     
 last_item = 100
 
-snumbers = list(get_snumbers())[last_item:1000]
+snumbers = list(get_snumbers())[last_item:105]
 
 t = time.time()
 

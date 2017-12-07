@@ -114,13 +114,21 @@ def get_conjuctive_water_use(sc):
             for i in xrange(len(cols)): 
                 if 'in lieu of surface water' in cols[i].text: 
                     results.append(clean_text(cols[i + 1].text))
-        elif 'Amount of groundwater used' in row.text: 
+    
+    if not len(results)  > 0:
+        results.append('na')
+        
+    for row in table.select('tr'):         
+        if 'Amount of groundwater used' in row.text: 
             cols = row.select('td')
             for i in xrange(len(cols)): 
                 if 'Amount of groundwater used' in cols[i].text: 
                     amt = clean_text(cols[i + 1].text)
                     amt = amt if len(amt) > 0 else '0'
                     results.append(amt)
+    if not len(results)  > 1:
+        results.append('na')
+        
     return results
         
 def get_units(sc): 
