@@ -7,8 +7,11 @@ import csv
 import urlparse
 import re
 import os
-import multiprocessing as mp 
+import multiprocessing as mp
 
+from get_sswdu_reports import get_row
+
+import random
 
 url = 'http://ciwqs.waterboards.ca.gov/ciwqs/ewrims/EWServlet?Page_From=EWWaterRightPublicSearch.jsp&Redirect_Page=EWWaterRightPublicSearchResults.jsp&Object_Expected=EwrimsSearchResult&Object_Created=EwrimsSearch&Object_Criteria=&Purpose=&subTypeCourtAdjSpec=&subTypeOtherSpec=&appNumber={sn}&permitNumber=&licenseNumber=&waterHolderName=&source=&hucNumber='
 burl = 'http://ciwqs.waterboards.ca.gov/ciwqs/ewrims/'
@@ -23,6 +26,7 @@ PHANTOMJS_PATH = r'C:\Users\Rudy\Documents\PhantomJS\phantomjs-2.1.1-windows\pha
 REPORTS = 'sswdu_reports_to_unitify.csv'
 RESULTS = 'sswdu_results_testing.csv'
 
+HEADER = ['Form Type', 'Year of Data', 'Statement Number', 'Water Under', 'Year Diversion Commenced', 'Jan. Diverted', 'Feb. Diverted', 'Mar. Diverted', 'Apr. Diverted', 'May. Diverted', 'Jun. Diverted', 'Jul. Diverted', 'Aug. Diverted', 'Sep. Diverted', 'Oct. Diverted', 'Nov. Diverted', 'Dec. Diverted', 'Total Diverted', 'Jan. Used', 'Feb. Used', 'Mar. Used', 'Apr. Used', 'May. Used', 'Jun. Used', 'Jul. Used', 'Aug. Used', 'Sep. Used', 'Oct. Used', 'Nov. Used', 'Dec. Used', 'Total Used', 'Water Transfered', 'Quantity Transfered', 'Water Supply Contract', 'Source from which Contract was Diverted', 'Amount Authorized to be Diverted in 20XX', 'Purpose of Use', 'Are You Using Groundwater in Lieu of Surface Water?', 'Amount of Groundwater Used?', 'Units']
 
 def get_snumbers(snumbers_f=REPORTS):
     with open(snumbers_f, 'rb') as f:
@@ -53,33 +57,6 @@ def get_all_reports(url, year):
     
     return map(lambda x: burl + x.find_all('a')[0].get('href'), links)
 
-
-def get_revelant_colnums(cols): 
-    results = []
-    for i, col in enumerate(cols): 
-        if 'Amount directly diverted' in col.text: 
-            results.append(i)
-        elif 'Amount beneficially used' in col.text: 
-            results.append(i)
-    return results
-
-def get_total_diver_used(sc): 
-    soup = BS(sc, 'html.parser')
-    table = filter(lambda x: 'Amount of Water Diverted and Used' in x.text, soup.find_all('table'))[0]
-    header = filter(lambda x: 'Amount directly diverted' in x.text and 'Amount beneficially used' in x.text, table.select('tr'))[0]
-    cols = get_revelant_colnums(header.select('th'))
-
-    for row in table.select('tr'): 
-        tds = row.select('td')
-
-        if tds: 
-            if 'Total' in tds[0].text: 
-                total_row = map(lambda x: x.text, tds)
-                break 
-                
-    return total_row[cols[0]], total_row[cols[1]]
-
-
 def get_report_details(url):
     print "GET REPORT UNITS"
     driver = wd.PhantomJS(executable_path=PHANTOMJS_PATH)
@@ -87,68 +64,48 @@ def get_report_details(url):
     
     sc = driver.page_source
     
-    try: 
-        total_diverted, total_used = get_total_diver_used(sc)
-    except Exception as msg:
-        print "An error occurred in get_total_diver_used()", msg
-    
-    print total_diverted, total_used
-    
-    sc = ' '.join(sc.split())
     driver.quit()
-    result = re.findall(r'(\(Acre-Feet\)|\(Gallons\))', sc)
     
     if result:
         return [result[0].replace('(', '').replace(')', ''), total_diverted, total_used]
     return 'NA'
-    
-def get_units(spacket):
+
+def get_rows(spacket):
     year, snumber = spacket
     
     report_home = get_report_home(snumber)
     
-    print report_home
-
-    try: 
-        links = get_all_reports(report_home, year)
-        print links
-        return [[year, snumber] + get_report_details(l) for l in links]
-    except:
-        return None
+    links = get_all_reports(report_home, year)
     
+    for link in links:
+        print link
+        yield get_row(link)
+        
+    # return [get_row(l) for l in links]
+    # except Exception as msg:
+    #     print msg
+    #     return None
+    
+last_item = 100
 
-last_item = 0
-
-snumbers = list(get_snumbers())[last_item:100]
+snumbers = list(get_snumbers())[last_item:1000]
 
 t = time.time()
 
-with open(RESULTS, 'ab') as outfile:
+with open(RESULTS, 'wb') as outfile:
     writer = csv.writer(outfile, delimiter=',')
-
-    if not os.path.exists(RESULTS): 
-            writer.writerow(['Year', 'Statement Number', 'Units', 'Total Diverted', 'Total Used'])
+    writer.writerow(HEADER)
 
     i = 0
 
     while i < len(snumbers):
         print "SSWDU Row {0}".format(i + last_item)
 
-        try:
-            rows = get_units(snumbers[i])
-            
-            print rows
+        rows = get_rows(snumbers[i])
+        
+        for row in rows:
+            writer.writerow(row)
+        i += 1
 
-            if rows is None:
-                i += 1
-                continue
-            
-            for row in rows: 
-                writer.writerow(row)
-            i += 1
-        except Exception as e:
-            print e
-            continue
-            
 print "Finished ", round(time.time() - t, 2)
     
